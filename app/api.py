@@ -6,14 +6,14 @@ import tempfile
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
-from app import calc, services
+from app import auth, calc, services
 from app.config import TZ
 from app.db import get_conn
-from app.schemas import AbsenceIn, EntryIn, SettingsIn
+from app.schemas import AbsenceIn, EntryIn, LoginIn, SettingsIn
 from app.services import AppError
 
 router = APIRouter(prefix="/api/v1")
@@ -22,6 +22,49 @@ Conn = Annotated[sqlite3.Connection, Depends(get_conn)]
 
 def _ok(data: object, **meta: object) -> dict:
     return {"data": data, "meta": meta}
+
+
+@router.post("/auth/login")
+def login(body: LoginIn, request: Request) -> Response:
+    ip = auth.client_ip(request)
+    wait = auth.throttle.wait_seconds(ip)
+    if wait:
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "too_many_attempts",
+                    "message": f"Zu viele Versuche. Bitte in {wait} s erneut versuchen.",
+                }
+            },
+            status_code=429,
+            headers={"Retry-After": str(wait)},
+        )
+    if not auth.check_login(body.password):
+        auth.throttle.failure(ip)
+        raise AppError(401, "invalid_credentials", "Passwort falsch.")
+    auth.throttle.success(ip)
+    token = auth.create_session(services.now_ts())
+    response = JSONResponse(_ok({"ok": True}))
+    response.set_cookie(
+        auth.COOKIE,
+        token,
+        max_age=auth.SESSION_SECONDS,
+        httponly=True,
+        secure=auth.cookie_secure(),
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(request: Request) -> Response:
+    auth.delete_session(request.cookies.get(auth.COOKIE))
+    response = Response(status_code=204)
+    response.delete_cookie(
+        auth.COOKIE, path="/", httponly=True, secure=auth.cookie_secure(), samesite="strict"
+    )
+    return response
 
 
 @router.get("/overview")

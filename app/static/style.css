@@ -116,3 +116,9 @@ legend { color: var(--muted); font-size: .92rem; padding: 0 4px; }
   .entry .times { flex-basis: 100%; }
   .entry .dur { flex: 1; }
 }
+
+/* login page */
+.login { max-width: 380px; padding-top: 12vh; }
+.login h1 { text-align: center; }
+.login-card { padding: 20px; display: grid; gap: 14px; }
+.login-card label { display: grid; gap: 4px; }

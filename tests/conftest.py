@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app import services
+from app import auth, services
 from app.config import TZ
 
 
@@ -24,9 +24,25 @@ def clock(monkeypatch) -> Clock:
     return Clock(monkeypatch)
 
 
+PASSWORD = "correct horse battery"
+BASE = "https://testserver"
+ORIGIN = {"Origin": BASE}
+
+
 @pytest.fixture
-def client(tmp_path, monkeypatch, clock) -> TestClient:
+def anon_client(tmp_path, monkeypatch, clock) -> TestClient:
+    """No session. Secure cookies work because the base URL is https, like behind the TLS proxy."""
     monkeypatch.setenv("ZEIT_DB_PATH", str(tmp_path / "db" / "zeit.db"))
+    monkeypatch.setenv("ZEIT_PASSWORD_HASH", auth.hash_password(PASSWORD, n=1024))
+    auth.throttle.reset()
     from app.main import app
 
-    return TestClient(app)
+    return TestClient(app, base_url=BASE, headers=ORIGIN)
+
+
+@pytest.fixture
+def client(anon_client) -> TestClient:
+    """Logged in."""
+    res = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD})
+    assert res.status_code == 200
+    return anon_client

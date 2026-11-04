@@ -31,6 +31,7 @@ async function api(method, path, body) {
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) { window.location.reload(); throw new Error('Bitte anmelden.'); }
   if (res.status === 204) return null;
   let json = null;
   try { json = await res.json(); } catch (e) { /* not JSON */ }
@@ -319,3 +320,7 @@ setInterval(tick, 1000);
 setInterval(refresh, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 refresh();
+
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  try { await fetch('/api/v1/auth/logout', { method: 'POST' }); } finally { window.location.assign('/'); }
+});

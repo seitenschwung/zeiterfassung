@@ -1,5 +1,7 @@
 import sqlite3
 
+from app import auth
+
 DAY = "2026-11-03"
 
 
@@ -28,7 +30,9 @@ def test_clock_start_stop_and_survives_restart(client, clock, tmp_path):
     from app.main import app
 
     clock.set("2026-11-04T09:30")
-    running = data(TestClient(app).get("/api/v1/overview"))["running"]
+    fresh = TestClient(app, base_url=client.base_url)
+    fresh.cookies.set(auth.COOKIE, client.cookies.get(auth.COOKIE))  # sessions live in the database
+    running = data(fresh.get("/api/v1/overview"))["running"]
     assert running["duration"] == 90 * 60
     stopped = data(client.post("/api/v1/clock/stop"))
     assert stopped["running"] is False and stopped["duration"] == 90 * 60

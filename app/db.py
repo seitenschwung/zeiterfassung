@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS absences (
     fraction REAL NOT NULL CHECK (fraction IN (0.5, 1.0))
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    created_ts INTEGER NOT NULL,
+    expires_ts INTEGER NOT NULL
+);
 """
 
 _initialized: set[str] = set()
