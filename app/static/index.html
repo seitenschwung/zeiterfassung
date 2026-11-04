@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Persönliche Arbeitszeiterfassung">
+<title>Zeiterfassung</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1>Zeiterfassung</h1>
+  <nav aria-label="Werkzeuge" class="tools">
+    <button type="button" id="btn-theme" class="ghost" aria-label="Darstellung wechseln">Auto</button>
+    <button type="button" id="btn-settings" class="ghost">Einstellungen</button>
+    <button type="button" class="ghost" data-download="/api/v1/export.csv">CSV</button>
+    <button type="button" class="ghost" data-download="/api/v1/backup">Backup</button>
+  </nav>
+</header>
+
+<main>
+  <section class="card clock" aria-labelledby="clock-h">
+    <h2 id="clock-h" class="sr">Stempeluhr</h2>
+    <p class="now" id="now" aria-hidden="true">--:--:--</p>
+    <p class="status" id="status" role="status" aria-live="polite">Lade …</p>
+    <p class="elapsed" id="elapsed" aria-hidden="true"></p>
+    <button type="button" id="clock-btn" class="big start" disabled>Starten</button>
+    <p class="error" id="clock-error" role="alert" hidden></p>
+  </section>
+
+  <section class="stats" aria-label="Übersicht">
+    <div class="card stat"><span class="label">Heute</span><strong id="s-today">–</strong><span class="sub" id="s-today-sub"></span></div>
+    <div class="card stat"><span class="label" id="s-week-label">Woche</span><strong id="s-week">–</strong><span class="sub" id="s-week-sub"></span></div>
+    <div class="card stat"><span class="label">Überstunden gesamt</span><strong id="s-total">–</strong><span class="sub" id="s-total-sub"></span></div>
+    <div class="card stat"><span class="label">Resturlaub</span><strong id="s-vac">–</strong><span class="sub" id="s-vac-sub"></span></div>
+  </section>
+
+  <section aria-labelledby="week-h">
+    <div class="weeknav">
+      <button type="button" id="prev" class="ghost" aria-label="Vorherige Woche">←</button>
+      <h2 id="week-h">Woche</h2>
+      <button type="button" id="next" class="ghost" aria-label="Nächste Woche">→</button>
+      <button type="button" id="this-week" class="ghost">Diese Woche</button>
+    </div>
+    <div id="days"></div>
+  </section>
+</main>
+
+<dialog id="dlg-entry" aria-labelledby="dlg-entry-h">
+  <form method="dialog" id="form-entry">
+    <h2 id="dlg-entry-h">Eintrag</h2>
+    <label>Start <input type="datetime-local" id="e-start" required></label>
+    <label>Ende <input type="datetime-local" id="e-end"></label>
+    <p class="hint" id="e-hint" hidden>Die Erfassung läuft noch. Das Ende bleibt leer.</p>
+    <p class="error" id="e-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="ghost" data-close>Abbrechen</button>
+      <button type="submit" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-absence" aria-labelledby="dlg-abs-h">
+  <form method="dialog" id="form-absence">
+    <h2 id="dlg-abs-h">Abwesenheit</h2>
+    <p id="a-date" class="hint"></p>
+    <label>Art
+      <select id="a-kind">
+        <option value="">Keine</option>
+        <option value="urlaub">Urlaub</option>
+        <option value="krank">Krank</option>
+      </select>
+    </label>
+    <label>Umfang
+      <select id="a-fraction">
+        <option value="1">Ganzer Tag</option>
+        <option value="0.5">Halber Tag</option>
+      </select>
+    </label>
+    <p class="error" id="a-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="ghost" data-close>Abbrechen</button>
+      <button type="submit" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-settings" aria-labelledby="dlg-set-h">
+  <form method="dialog" id="form-settings">
+    <h2 id="dlg-set-h">Einstellungen</h2>
+    <label>Sollstunden pro Woche <input type="number" id="c-hours" min="1" max="80" step="0.25" required></label>
+    <fieldset>
+      <legend>Arbeitstage</legend>
+      <div class="days-pick" id="c-days"></div>
+    </fieldset>
+    <label>Urlaubstage pro Jahr <input type="number" id="c-vac" min="0" max="366" step="0.5" required></label>
+    <label>Saldo zählt ab <input type="date" id="c-start"></label>
+    <p class="hint">Leer lassen: ab dem ersten Eintrag.</p>
+    <label>Startsaldo Überstunden (Stunden) <input type="number" id="c-balance" step="0.25" required></label>
+    <p class="hint">Feiertage: Schleswig-Holstein. Zeitzone: Europe/Berlin.</p>
+    <p class="error" id="c-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="ghost" data-close>Abbrechen</button>
+      <button type="submit" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/app.js" defer></script>
+</body>
+</html>

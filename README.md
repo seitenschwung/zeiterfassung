@@ -1,9 +1,6 @@
-# FastAPI blueprint
+# Zeiterfassung
 
-Starting point for Python APIs made with `dev --stack fastapi <name>` (claude-dev kit).
-Same deploy contract as `seitenschwung/template` (port 8080, `/healthz`, `/version.txt`, hardened
-image), shared pipeline `seitenschwung/template/.github/workflows/pipeline.yml@v1`, with lint and
-tests in the Dockerfile `test` stage. The deploy setup (Coolify, secrets, `COOLIFY_APP_UUID`) is the
-one in the README of `seitenschwung/template`.
+Persönliche Arbeitszeiterfassung (FastAPI + SQLite, Web-UI auf Deutsch). Kein Login: nur im Tailnet betreiben.
 
-Replace this README with one about the project.
+Start lokal: siehe `CLAUDE.md`. Daten: SQLite-Datei unter `ZEIT_DB_PATH` (Container: `/data/zeit.db`, Volume mounten).
+Backup: `GET /api/v1/backup`, Export: `GET /api/v1/export.csv`.
