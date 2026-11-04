@@ -24,23 +24,26 @@ def _ok(data: object, **meta: object) -> dict:
     return {"data": data, "meta": meta}
 
 
+def _too_many(message: str, retry_after: int) -> JSONResponse:
+    return JSONResponse(
+        {"error": {"code": "too_many_attempts", "message": message}},
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 @router.post("/auth/login")
 def login(body: LoginIn, request: Request) -> Response:
     ip = auth.client_ip(request)
-    wait = auth.throttle.wait_seconds(ip)
+    wait = auth.throttle.begin(ip)  # counts this attempt before hashing
     if wait:
-        return JSONResponse(
-            {
-                "error": {
-                    "code": "too_many_attempts",
-                    "message": f"Zu viele Versuche. Bitte in {wait} s erneut versuchen.",
-                }
-            },
-            status_code=429,
-            headers={"Retry-After": str(wait)},
-        )
-    if not auth.check_login(body.password):
-        auth.throttle.failure(ip)
+        return _too_many(f"Zu viele Versuche. Bitte in {wait} s erneut versuchen.", wait)
+    try:
+        ok = auth.check_login(body.password)
+    except auth.Busy:
+        auth.throttle.undo(ip)
+        return _too_many("Server ist ausgelastet. Bitte gleich erneut versuchen.", auth.BUSY_RETRY_AFTER)
+    if not ok:
         raise AppError(401, "invalid_credentials", "Passwort falsch.")
     auth.throttle.success(ip)
     token = auth.create_session(services.now_ts())

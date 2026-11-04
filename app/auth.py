@@ -55,13 +55,29 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+class Busy(Exception):
+    """All hash slots are taken; the caller answers 429 without hashing."""
+
+
+# Each scrypt call needs 16 MiB and the container has 256 MiB: never more than 2 at once.
+MAX_HASHES = 2
+BUSY_RETRY_AFTER = 2
+_hash_slots = threading.BoundedSemaphore(MAX_HASHES)
+
+
 def check_login(password: str) -> bool:
-    stored = os.environ.get("ZEIT_PASSWORD_HASH", "").strip()
-    if not stored:
-        # Still burn comparable time, so a missing hash is not distinguishable by timing.
-        _scrypt(password, b"\0" * 16, _N, _R, _P, _LEN)
-        return False
-    return verify_password(password, stored)
+    """Raises Busy (before any hashing) when MAX_HASHES hashes are already running."""
+    if not _hash_slots.acquire(blocking=False):
+        raise Busy
+    try:
+        stored = os.environ.get("ZEIT_PASSWORD_HASH", "").strip()
+        if not stored:
+            # Still burn comparable time, so a missing hash is not distinguishable by timing.
+            _scrypt(password, b"\0" * 16, _N, _R, _P, _LEN)
+            return False
+        return verify_password(password, stored)
+    finally:
+        _hash_slots.release()
 
 
 def cookie_secure() -> bool:
@@ -96,15 +112,44 @@ class Throttle:
             remaining = entry[1] - time.monotonic() if entry else 0
             return int(remaining) + 1 if remaining > 0 else 0
 
-    def failure(self, ip: str) -> None:
-        now = time.monotonic()
+    def begin(self, ip: str) -> int:
+        """Atomically: seconds to wait (nothing counted), or 0 after counting one attempt for this IP.
+
+        Counting before the hash means parallel requests cannot all slip past the lock. A successful
+        login takes it back via success(), a request rejected as busy via undo().
+        """
         with self._lock:
-            if len(self._state) >= self.MAX_IPS:
-                self._state = {k: v for k, v in self._state.items() if now - v[2] < self.FORGET}
-            fails, _, last = self._state.get(ip, (0, 0.0, now))
-            fails = 1 if now - last >= self.FORGET else fails + 1
-            delay = 0 if fails <= self.FREE else min(self.BASE * 2 ** (fails - self.FREE - 1), self.CAP)
-            self._state[ip] = (fails, now + delay, now)
+            entry = self._state.get(ip)
+            remaining = entry[1] - time.monotonic() if entry else 0
+            if remaining > 0:
+                return int(remaining) + 1
+            self._count(ip)
+            return 0
+
+    def undo(self, ip: str) -> None:
+        with self._lock:
+            entry = self._state.get(ip)
+            if not entry:
+                return
+            fails, _, last = entry
+            if fails <= 1:
+                del self._state[ip]
+            else:
+                self._state[ip] = (fails - 1, 0.0, last)
+
+    def failure(self, ip: str) -> None:
+        with self._lock:
+            self._count(ip)
+
+    def _count(self, ip: str) -> None:
+        """Caller holds the lock."""
+        now = time.monotonic()
+        if len(self._state) >= self.MAX_IPS:
+            self._state = {k: v for k, v in self._state.items() if now - v[2] < self.FORGET}
+        fails, _, last = self._state.get(ip, (0, 0.0, now))
+        fails = 1 if now - last >= self.FORGET else fails + 1
+        delay = 0 if fails <= self.FREE else min(self.BASE * 2 ** (fails - self.FREE - 1), self.CAP)
+        self._state[ip] = (fails, now + delay, now)
 
     def success(self, ip: str) -> None:
         with self._lock:

@@ -59,7 +59,8 @@ async def _security_headers(request: Request, call_next):
     response.headers.setdefault("Content-Security-Policy", CSP)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
-    response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    if not getattr(request.state, "indexable", False):
+        response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
@@ -77,7 +78,7 @@ def version() -> PlainTextResponse:
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
 def robots() -> str:
-    return "User-agent: *\nDisallow: /\n"
+    return "User-agent: *\nAllow: /\nDisallow: /api/\n"
 
 
 def _page(name: str) -> FileResponse:
@@ -89,9 +90,11 @@ def index(request: Request) -> FileResponse:
     """The app for a valid session, otherwise the login page (HTTP 200, so health probes can use it)."""
     if auth.session_valid(request.cookies.get(auth.COOKIE), services.now_ts()):
         return _page("index.html")
+    request.state.indexable = True  # only the public login page, it holds no data
     return _page("login.html")
 
 
 @app.get("/login", include_in_schema=False)
-def login_page() -> FileResponse:
+def login_page(request: Request) -> FileResponse:
+    request.state.indexable = True
     return _page("login.html")

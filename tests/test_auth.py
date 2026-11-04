@@ -83,13 +83,6 @@ def test_root_serves_app_with_session(client):
     assert client.get("/api/v1/overview").status_code == 200
 
 
-def test_robots_and_noindex_header(anon_client):
-    res = anon_client.get("/robots.txt")
-    assert res.text == "User-agent: *\nDisallow: /\n"
-    for url in ("/", "/healthz", "/api/v1/overview"):
-        assert "noindex" in anon_client.get(url).headers["x-robots-tag"]
-
-
 def test_csp_unchanged_and_strict(anon_client):
     csp = anon_client.get("/").headers["content-security-policy"]
     assert "default-src 'self'" in csp
@@ -233,3 +226,153 @@ def test_same_origin_write_and_reads_without_origin_pass(client):
 def test_no_secrets_in_logs(anon_client, caplog):
     anon_client.post("/api/v1/auth/login", json={"password": "hunter2-secret"})
     assert "hunter2-secret" not in caplog.text
+
+
+def test_robots_txt_allows_login_and_blocks_api(anon_client):
+    res = anon_client.get("/robots.txt")
+    assert res.text == "User-agent: *\nAllow: /\nDisallow: /api/\n"
+    assert "noindex" in res.headers["x-robots-tag"]
+
+
+@pytest.mark.parametrize("url", ["/", "/login"])
+def test_login_page_is_indexable_without_session(anon_client, url):
+    res = anon_client.get(url)
+    assert res.status_code == 200
+    assert "x-robots-tag" not in res.headers
+    assert 'lang="de"' in res.text
+    assert "<title>" in res.text
+    assert 'name="description"' in res.text
+    assert "width=device-width" in res.text
+    assert "noindex" not in res.text
+
+
+def test_root_with_session_stays_noindex(client):
+    assert "Überstunden" in client.get("/").text
+    assert client.get("/").headers["x-robots-tag"] == "noindex, nofollow"
+
+
+def test_login_page_with_session_has_no_robots_header_but_no_data(client):
+    res = client.get("/login")
+    assert "x-robots-tag" not in res.headers
+    assert "Überstunden" not in res.text
+
+
+@pytest.mark.parametrize(
+    "url", ["/healthz", "/version.txt", "/api/v1/overview", "/api/v1/nope", "/static/app.js"]
+)
+@pytest.mark.parametrize("session", [False, True])
+def test_everything_else_is_noindex(request, url, session):
+    c = request.getfixturevalue("client" if session else "anon_client")
+    assert c.get(url).headers["x-robots-tag"] == "noindex, nofollow"
+
+
+def test_login_api_noindex(anon_client):
+    res = anon_client.post("/api/v1/auth/login", json={"password": "bad"})
+    assert res.headers["x-robots-tag"] == "noindex, nofollow"
+
+
+def _take_slots():
+    for _ in range(auth.MAX_HASHES):
+        assert auth._hash_slots.acquire(blocking=False)
+
+
+def _free_slots():
+    for _ in range(auth.MAX_HASHES):
+        auth._hash_slots.release()
+
+
+def test_busy_hashing_answers_429_without_hashing(anon_client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(auth, "_scrypt", lambda *a, **k: calls.append(1) or b"")
+    _take_slots()
+    try:
+        res = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD})
+        assert res.status_code == 429
+        assert int(res.headers["retry-after"]) >= 1
+        monkeypatch.delenv("ZEIT_PASSWORD_HASH")  # also without a configured hash
+        assert anon_client.post("/api/v1/auth/login", json={"password": "x"}).status_code == 429
+        assert calls == []
+    finally:
+        _free_slots()
+    monkeypatch.undo()
+    assert anon_client.post("/api/v1/auth/login", json={"password": "bad"}).status_code == 401
+
+
+def test_busy_rejections_do_not_count_against_the_ip(anon_client):
+    ip = {"X-Forwarded-For": "203.0.113.77"}
+    _take_slots()
+    try:
+        for _ in range(10):
+            assert (
+                anon_client.post("/api/v1/auth/login", json={"password": "x"}, headers=ip).status_code == 429
+            )
+    finally:
+        _free_slots()
+    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}, headers=ip).status_code == 200
+
+
+def test_parallel_logins_are_limited_and_correct_password_still_works(anon_client, monkeypatch):
+    import threading
+
+    from app.db import connect
+
+    connect().close()  # create the database before the threads race on it
+    inside, release = threading.Semaphore(0), threading.Event()
+    running, peak, lock = [0], [0], threading.Lock()
+    real = auth.verify_password
+
+    def slow(password, stored):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        inside.release()
+        release.wait(5)
+        with lock:
+            running[0] -= 1
+        return real(password, stored)
+
+    monkeypatch.setattr(auth, "verify_password", slow)
+    codes = []
+
+    def attempt(i):
+        r = anon_client.post(
+            "/api/v1/auth/login", json={"password": PASSWORD}, headers={"X-Forwarded-For": f"198.51.100.{i}"}
+        )
+        codes.append(r.status_code)
+
+    threads = [threading.Thread(target=attempt, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for _ in range(auth.MAX_HASHES):
+        assert inside.acquire(timeout=5)
+    for _ in range(100):  # let the other four get rejected while the slots are held
+        if len(codes) >= 4:
+            break
+        threading.Event().wait(0.05)
+    release.set()
+    for t in threads:
+        t.join(10)
+    assert peak[0] <= auth.MAX_HASHES
+    assert sorted(codes) == [200, 200, 429, 429, 429, 429]
+    monkeypatch.setattr(auth, "verify_password", real)
+    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 200
+
+
+def test_parallel_attempts_of_one_ip_are_counted_before_the_hash(anon_client, monkeypatch):
+    """While the first (slow) hash runs, its attempt is already counted: 4 in flight lock the IP."""
+    t = auth.throttle
+    for _ in range(auth.Throttle.FREE):
+        assert t.begin("9.9.9.9") == 0  # nothing hashed yet, still counted
+    assert t.begin("9.9.9.9") == 0  # 4th is the one that sets the wait
+    assert t.begin("9.9.9.9") > 0
+    t.success("9.9.9.9")
+    assert t.begin("9.9.9.9") == 0
+
+
+def test_undo_takes_one_attempt_back():
+    t = auth.Throttle()
+    for _ in range(4):
+        t.begin("a")
+    assert t.wait_seconds("a") > 0
+    t.undo("a")
+    assert t.wait_seconds("a") == 0
