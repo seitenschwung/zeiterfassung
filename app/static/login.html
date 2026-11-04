@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Anmeldung zur Zeiterfassung: Arbeitszeiten stempeln, Soll/Ist und Saldo im Blick.">
+<title>Anmelden – Zeiterfassung</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<main class="login">
+  <h1>Zeiterfassung</h1>
+  <form id="form-login" class="card login-card" method="post">
+    <h2>Anmelden</h2>
+    <label>Passwort <input type="password" id="password" name="password" autocomplete="current-password" required autofocus></label>
+    <p class="error" id="login-error" role="alert" hidden></p>
+    <button type="submit" class="primary" id="login-btn">Anmelden</button>
+  </form>
+</main>
+<script src="/static/login.js"></script>
+</body>
+</html>

@@ -4,8 +4,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import auth, services
 from app.api import router
 from app.config import STATIC_DIR
 from app.services import AppError
@@ -39,11 +41,26 @@ async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
 
 
 @app.middleware("http")
+async def _auth(request: Request, call_next):
+    """Default deny: every path needs a valid session unless it is listed as public in app.auth."""
+    path = request.url.path
+    if request.method in auth.UNSAFE_METHODS and not auth.origin_ok(request):
+        return _error(403, "bad_origin", "Anfrage von fremder Herkunft abgelehnt.")
+    if not auth.is_public(path):
+        token = request.cookies.get(auth.COOKIE)
+        if not await run_in_threadpool(auth.session_valid, token, services.now_ts()):
+            return _error(401, "unauthorized", "Bitte anmelden.")
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("Content-Security-Policy", CSP)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if not getattr(request.state, "indexable", False):
+        response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
@@ -59,6 +76,25 @@ def version() -> PlainTextResponse:
     return PlainTextResponse(os.environ.get("APP_VERSION", "dev"), headers={"Cache-Control": "no-store"})
 
 
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+def robots() -> str:
+    return "User-agent: *\nAllow: /\nDisallow: /api/\n"
+
+
+def _page(name: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / name, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+def index(request: Request) -> FileResponse:
+    """The app for a valid session, otherwise the login page (HTTP 200, so health probes can use it)."""
+    if auth.session_valid(request.cookies.get(auth.COOKIE), services.now_ts()):
+        return _page("index.html")
+    request.state.indexable = True  # only the public login page, it holds no data
+    return _page("login.html")
+
+
+@app.get("/login", include_in_schema=False)
+def login_page(request: Request) -> FileResponse:
+    request.state.indexable = True
+    return _page("login.html")

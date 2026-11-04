@@ -3,6 +3,10 @@ from datetime import date
 from pydantic import BaseModel, Field, field_validator
 
 
+class LoginIn(BaseModel):
+    password: str = Field(max_length=1024)
+
+
 class EntryIn(BaseModel):
     start: str
     end: str | None = None
