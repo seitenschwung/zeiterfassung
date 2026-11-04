@@ -1,0 +1,19 @@
+# Keep the build context small and free of secrets. Switch to an allowlist ("*" plus
+# "!src/" …) once the project layout is clear.
+.git
+.github
+node_modules
+dist
+build
+coverage
+test-results
+playwright-report
+.playwright-mcp
+.progress
+.env
+.env.*
+*.md
+__pycache__
+.venv
+.pytest_cache
+.ruff_cache

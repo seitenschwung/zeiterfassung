@@ -1,0 +1,36 @@
+# For Coolify: Build Pack "Docker Compose", give the service "web" the domain with port 8080
+# (https://<domain>:8080). Coolify handles TLS and routing.
+services:
+  web:
+    # Coolify doesn't build: CI builds and tests the image, pushes it to ghcr.io and sets IMAGE
+    # (an environment variable in Coolify) to exactly that tag before every deploy. The default only
+    # lets Coolify create the app before the first deploy; it is not a real image and never runs.
+    image: ${IMAGE:-ghcr.io/seitenschwung/image-set-by-ci:none}
+    restart: unless-stopped
+    # CrowdSec reads this container's logs through the Docker API (labels, see CLAUDE.md).
+    labels:
+      - crowdsec.enable=true
+      - crowdsec.labels.type=http
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 256m
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
