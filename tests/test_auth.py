@@ -423,3 +423,104 @@ def test_hash_runs_even_for_wrong_username(anon_client, monkeypatch):
 def test_login_requires_username_field(anon_client):
     assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 422
     assert USERNAME
+
+
+# --- login diagnosis (issue #8) ---
+
+LOGIN = "/api/v1/auth/login"
+
+
+def _fail_reason(caplog):
+    return [r.getMessage() for r in caplog.records if r.getMessage().startswith("login failed")]
+
+
+def test_username_with_surrounding_spaces_logs_in(anon_client):
+    res = anon_client.post(LOGIN, json={**CREDS, "username": f"  {USERNAME}  "})
+    assert res.status_code == 200
+
+
+def test_username_case_stays_exact(anon_client):
+    assert anon_client.post(LOGIN, json={**CREDS, "username": USERNAME.upper()}).status_code == 401
+
+
+def test_reason_username_mismatch(anon_client, caplog):
+    with caplog.at_level("WARNING"):
+        anon_client.post(LOGIN, json={**CREDS, "username": "someone-else"})
+    assert _fail_reason(caplog) == ["login failed: username_mismatch"]
+    assert "someone-else" not in caplog.text
+
+
+def test_reason_password_mismatch(anon_client, caplog):
+    with caplog.at_level("WARNING"):
+        anon_client.post(LOGIN, json={**CREDS, "password": "wrong-pw-xyz"})
+    assert _fail_reason(caplog) == ["login failed: password_mismatch"]
+    assert "wrong-pw-xyz" not in caplog.text
+
+
+@pytest.mark.parametrize("var", ["ZEIT_PASSWORD_HASH", "ZEIT_USERNAME"])
+def test_reason_auth_not_configured(anon_client, monkeypatch, caplog, var):
+    monkeypatch.delenv(var)
+    with caplog.at_level("WARNING"):
+        anon_client.post(LOGIN, json=CREDS)
+    assert _fail_reason(caplog) == ["login failed: auth_not_configured"]
+
+
+def test_reason_auth_not_configured_malformed_hash(anon_client, monkeypatch, caplog):
+    monkeypatch.setenv("ZEIT_PASSWORD_HASH", "scrypt:oops:salt:hash")
+    with caplog.at_level("WARNING"):
+        anon_client.post(LOGIN, json=CREDS)
+    assert _fail_reason(caplog) == ["login failed: auth_not_configured"]
+    assert "oops" not in caplog.text and PASSWORD not in caplog.text
+
+
+def test_browser_response_identical_for_all_failures(anon_client, monkeypatch):
+    bodies = []
+    for creds in ({**CREDS, "username": "x"}, {**CREDS, "password": "x"}):
+        auth.throttle.reset()
+        res = anon_client.post(LOGIN, json=creds)
+        bodies.append((res.status_code, res.json()))
+    monkeypatch.delenv("ZEIT_PASSWORD_HASH")
+    auth.throttle.reset()
+    res = anon_client.post(LOGIN, json=CREDS)
+    bodies.append((res.status_code, res.json()))
+    assert len(set(map(str, bodies))) == 1
+    assert bodies[0][0] == 401
+
+
+def test_logs_never_contain_input_or_hash(anon_client, monkeypatch, caplog):
+    import os
+
+    stored = os.environ["ZEIT_PASSWORD_HASH"]
+    salt, digest = stored.split(":")[-2:]
+    with caplog.at_level("DEBUG"):
+        anon_client.post(LOGIN, json={"username": "secret-user", "password": "secret-pass"})
+        anon_client.post(LOGIN, json={**CREDS, "password": "secret-pass"})
+    for value in ("secret-user", "secret-pass", stored, salt, digest, PASSWORD):
+        assert value not in caplog.text
+
+
+def test_startup_status_flags(monkeypatch):
+    monkeypatch.setenv("ZEIT_USERNAME", "philipp ")
+    monkeypatch.setenv("ZEIT_PASSWORD_HASH", auth.hash_password("pw-123", n=1024))
+    line = auth.startup_status()
+    assert line == (
+        "auth config: username_set=yes username_has_outer_whitespace=yes hash_set=yes hash_format_valid=yes"
+    )
+    monkeypatch.delenv("ZEIT_USERNAME")
+    monkeypatch.setenv("ZEIT_PASSWORD_HASH", "garbage")
+    assert auth.startup_status() == (
+        "auth config: username_set=no username_has_outer_whitespace=no hash_set=yes hash_format_valid=no"
+    )
+    assert "garbage" not in auth.startup_status()
+
+
+def test_startup_prints_status(monkeypatch, capsys):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setenv("ZEIT_USERNAME", "u")
+    monkeypatch.delenv("ZEIT_PASSWORD_HASH", raising=False)
+    with TestClient(app):
+        pass
+    assert "auth config: username_set=yes" in capsys.readouterr().out

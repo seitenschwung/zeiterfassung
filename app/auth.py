@@ -38,8 +38,8 @@ def hash_password(password: str, n: int = _N) -> str:
     return f"scrypt:{n}:{_R}:{_P}:{salt.hex()}:{_scrypt(password, salt, n, _R, _P, _LEN).hex()}"
 
 
-def verify_password(password: str, stored: str) -> bool:
-    """Constant-time check. False for a missing or malformed hash (fail closed)."""
+def _parse_hash(stored: str) -> tuple[int, int, int, bytes, bytes] | None:
+    """Split a stored hash into (n, r, p, salt, digest); None if it is malformed."""
     try:
         scheme, n, r, p, salt, digest = stored.strip().split(":")
         if scheme != "scrypt":
@@ -47,12 +47,44 @@ def verify_password(password: str, stored: str) -> bool:
         n, r, p = int(n), int(r), int(p)
         if not (2 <= n <= 2**20 and n & (n - 1) == 0 and 1 <= r <= 32 and 1 <= p <= 16):
             raise ValueError("params")
-        expected = bytes.fromhex(digest)
-        actual = _scrypt(password, bytes.fromhex(salt), n, r, p, len(expected))
-    except (ValueError, TypeError, MemoryError):
-        log.warning("ZEIT_PASSWORD_HASH is missing or malformed: logins are rejected")
-        return False
-    return hmac.compare_digest(actual, expected)
+        return n, r, p, bytes.fromhex(salt), bytes.fromhex(digest)
+    except (ValueError, TypeError):
+        return None
+
+
+def hash_format_valid(stored: str) -> bool:
+    return _parse_hash(stored) is not None
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Constant-time check. False for a missing or malformed hash (fail closed)."""
+    parsed = _parse_hash(stored)
+    if parsed is not None:
+        n, r, p, salt, expected = parsed
+        try:
+            actual = _scrypt(password, salt, n, r, p, len(expected))
+        except (ValueError, MemoryError):
+            actual = None
+        if actual is not None:
+            return hmac.compare_digest(actual, expected)
+    log.warning("ZEIT_PASSWORD_HASH is missing or malformed: logins are rejected")
+    return False
+
+
+def startup_status() -> str:
+    """One line with yes/no flags about the login configuration. Never contains any value."""
+    raw_user = os.environ.get("ZEIT_USERNAME", "")
+    stored = os.environ.get("ZEIT_PASSWORD_HASH", "")
+
+    def yn(flag: bool) -> str:
+        return "yes" if flag else "no"
+
+    return (
+        f"auth config: username_set={yn(bool(raw_user.strip()))} "
+        f"username_has_outer_whitespace={yn(raw_user != raw_user.strip())} "
+        f"hash_set={yn(bool(stored.strip()))} "
+        f"hash_format_valid={yn(hash_format_valid(stored))}"
+    )
 
 
 class Busy(Exception):
@@ -65,11 +97,13 @@ BUSY_RETRY_AFTER = 2
 _hash_slots = threading.BoundedSemaphore(MAX_HASHES)
 
 
-def check_login(username: str, password: str) -> bool:
-    """Raises Busy (before any hashing) when MAX_HASHES hashes are already running.
+def check_login(username: str, password: str) -> str | None:
+    """None on success, otherwise the failure reason (server log only, never sent to the browser):
+    auth_not_configured, username_mismatch or password_mismatch.
 
+    Raises Busy (before any hashing) when MAX_HASHES hashes are already running.
     The hash always runs, also for a wrong or unconfigured username, so the answer time does not
-    reveal the username. Missing ZEIT_USERNAME or ZEIT_PASSWORD_HASH: always False (fail closed).
+    reveal the username. Missing ZEIT_USERNAME or ZEIT_PASSWORD_HASH: always fails (fail closed).
     """
     if not _hash_slots.acquire(blocking=False):
         raise Busy
@@ -82,8 +116,16 @@ def check_login(username: str, password: str) -> bool:
             # Still burn comparable time, so a missing hash is not distinguishable by timing.
             _scrypt(password, b"\0" * 16, _N, _R, _P, _LEN)
             password_ok = False
-        user_ok = hmac.compare_digest(username.encode(), expected_user.encode()) and bool(expected_user)
-        return user_ok and password_ok
+        user_ok = hmac.compare_digest(username.strip().encode(), expected_user.encode()) and bool(
+            expected_user
+        )
+        if not expected_user or not hash_format_valid(stored):
+            return "auth_not_configured"
+        if not user_ok:
+            return "username_mismatch"
+        if not password_ok:
+            return "password_mismatch"
+        return None
     finally:
         _hash_slots.release()
 
