@@ -11,7 +11,7 @@ form.addEventListener('submit', async (ev) => {
     const res = await fetch('/api/v1/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: document.getElementById('password').value }),
+      body: JSON.stringify({ username: document.getElementById('username').value, password: document.getElementById('password').value }),
     });
     if (res.ok) {
       window.location.assign('/');

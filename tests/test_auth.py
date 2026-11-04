@@ -6,7 +6,7 @@ from starlette.routing import Mount, Route
 
 from app import auth
 from app.main import app
-from tests.conftest import BASE, PASSWORD
+from tests.conftest import BASE, CREDS, PASSWORD, USERNAME
 
 STATIC_PROBE = "/static/app.js"  # exists, is not public
 
@@ -90,7 +90,7 @@ def test_csp_unchanged_and_strict(anon_client):
 
 
 def test_wrong_password_rejected(anon_client):
-    res = anon_client.post("/api/v1/auth/login", json={"password": "nope"})
+    res = anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "nope"})
     assert res.status_code == 401
     assert "set-cookie" not in res.headers
     assert anon_client.get("/api/v1/overview").status_code == 401
@@ -98,8 +98,8 @@ def test_wrong_password_rejected(anon_client):
 
 def test_fail_closed_without_hash(anon_client, monkeypatch):
     monkeypatch.delenv("ZEIT_PASSWORD_HASH")
-    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 401
-    assert anon_client.post("/api/v1/auth/login", json={"password": ""}).status_code == 401
+    assert anon_client.post("/api/v1/auth/login", json=CREDS).status_code == 401
+    assert anon_client.post("/api/v1/auth/login", json={**CREDS, "password": ""}).status_code == 401
     assert anon_client.get("/healthz").status_code == 200
 
 
@@ -108,7 +108,7 @@ def test_fail_closed_without_hash(anon_client, monkeypatch):
 )
 def test_malformed_hash_rejects_everything(anon_client, monkeypatch, bad):
     monkeypatch.setenv("ZEIT_PASSWORD_HASH", bad)
-    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 401
+    assert anon_client.post("/api/v1/auth/login", json=CREDS).status_code == 401
 
 
 def test_hash_format_has_no_dollar_and_verifies():
@@ -120,7 +120,7 @@ def test_hash_format_has_no_dollar_and_verifies():
 
 
 def test_cookie_flags_and_server_side_session(anon_client, tmp_path):
-    res = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD})
+    res = anon_client.post("/api/v1/auth/login", json=CREDS)
     cookie = res.headers["set-cookie"].lower()
     for flag in ("httponly", "secure", "samesite=strict", f"max-age={30 * 24 * 3600}"):
         assert flag in cookie
@@ -133,7 +133,7 @@ def test_cookie_flags_and_server_side_session(anon_client, tmp_path):
 
 def test_secure_flag_can_be_disabled_for_local_http(anon_client, monkeypatch):
     monkeypatch.setenv("ZEIT_COOKIE_SECURE", "0")
-    res = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD})
+    res = anon_client.post("/api/v1/auth/login", json=CREDS)
     assert "secure" not in res.headers["set-cookie"].lower()
 
 
@@ -159,10 +159,13 @@ def test_forged_token_rejected(anon_client):
 def test_throttle_grows_and_blocks_correct_password(anon_client):
     ip = {"X-Forwarded-For": "203.0.113.9"}
     for _ in range(3):
-        assert anon_client.post("/api/v1/auth/login", json={"password": "bad"}, headers=ip).status_code == 401
-    res = anon_client.post("/api/v1/auth/login", json={"password": "bad"}, headers=ip)
+        assert (
+            anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "bad"}, headers=ip).status_code
+            == 401
+        )
+    res = anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "bad"}, headers=ip)
     assert res.status_code == 401  # 4th failure triggers the first wait
-    blocked = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}, headers=ip)
+    blocked = anon_client.post("/api/v1/auth/login", json=CREDS, headers=ip)
     assert blocked.status_code == 429
     assert int(blocked.headers["retry-after"]) >= 1
 
@@ -170,16 +173,16 @@ def test_throttle_grows_and_blocks_correct_password(anon_client):
 def test_throttle_is_per_ip_and_spoofed_prefix_does_not_help(anon_client):
     for _ in range(6):
         anon_client.post(
-            "/api/v1/auth/login", json={"password": "bad"}, headers={"X-Forwarded-For": "203.0.113.9"}
+            "/api/v1/auth/login",
+            json={**CREDS, "password": "bad"},
+            headers={"X-Forwarded-For": "203.0.113.9"},
         )
     # another real client (the proxy appends the real address last) is not locked out
-    ok = anon_client.post(
-        "/api/v1/auth/login", json={"password": PASSWORD}, headers={"X-Forwarded-For": "203.0.113.50"}
-    )
+    ok = anon_client.post("/api/v1/auth/login", json=CREDS, headers={"X-Forwarded-For": "203.0.113.50"})
     assert ok.status_code == 200
     # a spoofed first entry does not dodge the limit: the last entry counts
     spoof = anon_client.post(
-        "/api/v1/auth/login", json={"password": PASSWORD}, headers={"X-Forwarded-For": "1.2.3.4, 203.0.113.9"}
+        "/api/v1/auth/login", json=CREDS, headers={"X-Forwarded-For": "1.2.3.4, 203.0.113.9"}
     )
     assert spoof.status_code == 429
 
@@ -211,9 +214,7 @@ def test_writes_check_origin(client, origin):
 
 def test_login_also_checks_origin(anon_client):
     anon_client.headers.pop("Origin", None)
-    res = anon_client.post(
-        "/api/v1/auth/login", json={"password": PASSWORD}, headers={"Origin": "https://evil.example"}
-    )
+    res = anon_client.post("/api/v1/auth/login", json=CREDS, headers={"Origin": "https://evil.example"})
     assert res.status_code == 403
 
 
@@ -267,7 +268,7 @@ def test_everything_else_is_noindex(request, url, session):
 
 
 def test_login_api_noindex(anon_client):
-    res = anon_client.post("/api/v1/auth/login", json={"password": "bad"})
+    res = anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "bad"})
     assert res.headers["x-robots-tag"] == "noindex, nofollow"
 
 
@@ -286,16 +287,16 @@ def test_busy_hashing_answers_429_without_hashing(anon_client, monkeypatch):
     monkeypatch.setattr(auth, "_scrypt", lambda *a, **k: calls.append(1) or b"")
     _take_slots()
     try:
-        res = anon_client.post("/api/v1/auth/login", json={"password": PASSWORD})
+        res = anon_client.post("/api/v1/auth/login", json=CREDS)
         assert res.status_code == 429
         assert int(res.headers["retry-after"]) >= 1
         monkeypatch.delenv("ZEIT_PASSWORD_HASH")  # also without a configured hash
-        assert anon_client.post("/api/v1/auth/login", json={"password": "x"}).status_code == 429
+        assert anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "x"}).status_code == 429
         assert calls == []
     finally:
         _free_slots()
     monkeypatch.undo()
-    assert anon_client.post("/api/v1/auth/login", json={"password": "bad"}).status_code == 401
+    assert anon_client.post("/api/v1/auth/login", json={**CREDS, "password": "bad"}).status_code == 401
 
 
 def test_busy_rejections_do_not_count_against_the_ip(anon_client):
@@ -304,11 +305,14 @@ def test_busy_rejections_do_not_count_against_the_ip(anon_client):
     try:
         for _ in range(10):
             assert (
-                anon_client.post("/api/v1/auth/login", json={"password": "x"}, headers=ip).status_code == 429
+                anon_client.post(
+                    "/api/v1/auth/login", json={**CREDS, "password": "x"}, headers=ip
+                ).status_code
+                == 429
             )
     finally:
         _free_slots()
-    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}, headers=ip).status_code == 200
+    assert anon_client.post("/api/v1/auth/login", json=CREDS, headers=ip).status_code == 200
 
 
 def test_parallel_logins_are_limited_and_correct_password_still_works(anon_client, monkeypatch):
@@ -335,9 +339,7 @@ def test_parallel_logins_are_limited_and_correct_password_still_works(anon_clien
     codes = []
 
     def attempt(i):
-        r = anon_client.post(
-            "/api/v1/auth/login", json={"password": PASSWORD}, headers={"X-Forwarded-For": f"198.51.100.{i}"}
-        )
+        r = anon_client.post("/api/v1/auth/login", json=CREDS, headers={"X-Forwarded-For": f"198.51.100.{i}"})
         codes.append(r.status_code)
 
     threads = [threading.Thread(target=attempt, args=(i,)) for i in range(6)]
@@ -355,7 +357,7 @@ def test_parallel_logins_are_limited_and_correct_password_still_works(anon_clien
     assert peak[0] <= auth.MAX_HASHES
     assert sorted(codes) == [200, 200, 429, 429, 429, 429]
     monkeypatch.setattr(auth, "verify_password", real)
-    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 200
+    assert anon_client.post("/api/v1/auth/login", json=CREDS).status_code == 200
 
 
 def test_parallel_attempts_of_one_ip_are_counted_before_the_hash(anon_client, monkeypatch):
@@ -376,3 +378,48 @@ def test_undo_takes_one_attempt_back():
     assert t.wait_seconds("a") > 0
     t.undo("a")
     assert t.wait_seconds("a") == 0
+
+
+MSG = "Benutzername oder Passwort falsch."
+
+
+def _login(c, **kw):
+    return c.post("/api/v1/auth/login", json={**CREDS, **kw})
+
+
+def test_login_ok(anon_client):
+    assert _login(anon_client).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "kw", [{"username": "other"}, {"username": "Philipp"}, {"password": "wrong"}, {"username": ""}]
+)
+def test_wrong_name_or_password_same_message(anon_client, kw):
+    res = _login(anon_client, **kw)
+    assert res.status_code == 401
+    assert res.json()["error"]["message"] == MSG
+    assert "set-cookie" not in res.headers
+
+
+def test_missing_username_env_fails_closed(anon_client, monkeypatch):
+    monkeypatch.delenv("ZEIT_USERNAME")
+    for kw in ({}, {"username": ""}):
+        res = _login(anon_client, **kw)
+        assert res.status_code == 401
+        assert res.json()["error"]["message"] == MSG
+
+
+def test_hash_runs_even_for_wrong_username(anon_client, monkeypatch):
+    calls = []
+    real = auth._scrypt
+    monkeypatch.setattr(auth, "_scrypt", lambda *a, **k: calls.append(1) or real(*a, **k))
+    assert _login(anon_client, username="nobody").status_code == 401
+    assert len(calls) == 1
+    monkeypatch.delenv("ZEIT_USERNAME")
+    assert _login(anon_client).status_code == 401
+    assert len(calls) == 2
+
+
+def test_login_requires_username_field(anon_client):
+    assert anon_client.post("/api/v1/auth/login", json={"password": PASSWORD}).status_code == 422
+    assert USERNAME
