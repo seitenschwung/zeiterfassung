@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +13,14 @@ from app.api import router
 from app.config import STATIC_DIR
 from app.services import AppError
 
-app = FastAPI(title="Zeiterfassung", docs_url=None, redoc_url=None, openapi_url=None)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    print(auth.startup_status(), flush=True)  # stdout: visible in the container logs
+    yield
+
+
+app = FastAPI(title="Zeiterfassung", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 app.include_router(router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
