@@ -65,17 +65,25 @@ BUSY_RETRY_AFTER = 2
 _hash_slots = threading.BoundedSemaphore(MAX_HASHES)
 
 
-def check_login(password: str) -> bool:
-    """Raises Busy (before any hashing) when MAX_HASHES hashes are already running."""
+def check_login(username: str, password: str) -> bool:
+    """Raises Busy (before any hashing) when MAX_HASHES hashes are already running.
+
+    The hash always runs, also for a wrong or unconfigured username, so the answer time does not
+    reveal the username. Missing ZEIT_USERNAME or ZEIT_PASSWORD_HASH: always False (fail closed).
+    """
     if not _hash_slots.acquire(blocking=False):
         raise Busy
     try:
+        expected_user = os.environ.get("ZEIT_USERNAME", "").strip()
         stored = os.environ.get("ZEIT_PASSWORD_HASH", "").strip()
-        if not stored:
+        if stored:
+            password_ok = verify_password(password, stored)
+        else:
             # Still burn comparable time, so a missing hash is not distinguishable by timing.
             _scrypt(password, b"\0" * 16, _N, _R, _P, _LEN)
-            return False
-        return verify_password(password, stored)
+            password_ok = False
+        user_ok = hmac.compare_digest(username.encode(), expected_user.encode()) and bool(expected_user)
+        return user_ok and password_ok
     finally:
         _hash_slots.release()
 

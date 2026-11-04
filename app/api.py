@@ -39,12 +39,12 @@ def login(body: LoginIn, request: Request) -> Response:
     if wait:
         return _too_many(f"Zu viele Versuche. Bitte in {wait} s erneut versuchen.", wait)
     try:
-        ok = auth.check_login(body.password)
+        ok = auth.check_login(body.username, body.password)
     except auth.Busy:
         auth.throttle.undo(ip)
         return _too_many("Server ist ausgelastet. Bitte gleich erneut versuchen.", auth.BUSY_RETRY_AFTER)
     if not ok:
-        raise AppError(401, "invalid_credentials", "Passwort falsch.")
+        raise AppError(401, "invalid_credentials", "Benutzername oder Passwort falsch.")
     auth.throttle.success(ip)
     token = auth.create_session(services.now_ts())
     response = JSONResponse(_ok({"ok": True}))

@@ -15,7 +15,8 @@
   <h1>Zeiterfassung</h1>
   <form id="form-login" class="card login-card" method="post">
     <h2>Anmelden</h2>
-    <label>Passwort <input type="password" id="password" name="password" autocomplete="current-password" required autofocus></label>
+    <label>Benutzername <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+    <label>Passwort <input type="password" id="password" name="password" autocomplete="current-password" required></label>
     <p class="error" id="login-error" role="alert" hidden></p>
     <button type="submit" class="primary" id="login-btn">Anmelden</button>
   </form>

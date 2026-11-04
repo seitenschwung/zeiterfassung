@@ -11,7 +11,7 @@ slim image may lack system zoneinfo.
 
 ## Commands
 - Setup: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`
-- Dev: `ZEIT_COOKIE_SECURE=0 ZEIT_PASSWORD_HASH=$(python -m app.hash_password) ZEIT_DB_PATH=/tmp/zeit-dev.db uvicorn app.main:app --reload --host 0.0.0.0 --port 8080`
+- Dev: `ZEIT_COOKIE_SECURE=0 ZEIT_USERNAME=admin ZEIT_PASSWORD_HASH=$(python -m app.hash_password) ZEIT_DB_PATH=/tmp/zeit-dev.db uvicorn app.main:app --reload --host 0.0.0.0 --port 8080`
 - Lint: `ruff check .` / `ruff format .`. Tests: `pytest -q`
 - Dependencies: pin exact versions in `requirements.txt` and `requirements-dev.txt`.
 
@@ -41,6 +41,8 @@ slim image may lack system zoneinfo.
 - Middleware in `app/main.py` requires a session for every path not in `auth.PUBLIC_PATHS` / `PUBLIC_STATIC`
   (login page, /healthz, /version.txt, /robots.txt, login endpoint, 4 static files). New routes are protected
   automatically; `tests/test_auth.py` walks all registered routes. Only add to the public sets on purpose.
+- Login = `ZEIT_USERNAME` (exact, `hmac.compare_digest` on bytes) + password. scrypt always runs, even for a wrong name; one
+  message for both failures ("Benutzername oder Passwort falsch."). Missing `ZEIT_USERNAME` -> every login 401.
 - `ZEIT_PASSWORD_HASH` = `scrypt:N:r:p:salt:hash` (hex, no `$`, Compose/Coolify mangle `$`). Missing or malformed
   -> app runs, every login 401 (fail closed). No default password, no first-run setup.
 - Cookie `zeit_session`: HttpOnly, SameSite=Strict, 30 days, Secure unless `ZEIT_COOKIE_SECURE=0` (local http).
@@ -52,5 +54,5 @@ slim image may lack system zoneinfo.
 ## Deploy contract
 Port 8080, `GET /healthz`, `GET /version.txt` (`APP_VERSION`), non-root, read-only root FS. DB path via
 `ZEIT_DB_PATH` (image default `/data/zeit.db`, mount a volume at `/data`). `docker-compose.yml` has the named volume
-`zeit-data` on `/data` and passes `ZEIT_PASSWORD_HASH` (no default). Keep the CrowdSec labels in it.
+`zeit-data` on `/data` and passes `ZEIT_USERNAME` and `ZEIT_PASSWORD_HASH` (no defaults). Keep the CrowdSec labels in it.
 Conventional Commits; branches + PRs only.

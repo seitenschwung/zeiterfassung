@@ -5,9 +5,9 @@ Persönliche Arbeitszeiterfassung (FastAPI + SQLite, Web-UI auf Deutsch). Öffen
 Start lokal: siehe `CLAUDE.md`. Daten: SQLite-Datei unter `ZEIT_DB_PATH` (Container: `/data/zeit.db`, Compose-Volume `zeit-data`).
 Backup: `GET /api/v1/backup`, Export: `GET /api/v1/export.csv` (beides nur mit Anmeldung).
 
-## Passwort setzen
+## Benutzername und Passwort setzen
 
-Das Passwort steht nur als Hash in der Umgebungsvariable `ZEIT_PASSWORD_HASH` (Format `scrypt:N:r:p:salt:hash`, ohne `$`).
+Der Benutzername steht im Klartext in der Umgebungsvariable `ZEIT_USERNAME` (wird exakt verglichen, Groß-/Kleinschreibung zählt). Das Passwort steht nur als Hash in der Umgebungsvariable `ZEIT_PASSWORD_HASH` (Format `scrypt:N:r:p:salt:hash`, ohne `$`).
 Hash erzeugen (fragt das Passwort verdeckt ab, mindestens 12 Zeichen):
 
 ```
@@ -16,7 +16,7 @@ python -m app.hash_password
 docker run --rm -it <image> python -m app.hash_password
 ```
 
-Die ausgegebene Zeile als `ZEIT_PASSWORD_HASH` in Coolify eintragen. Ohne die Variable startet die App, lehnt aber jeden Login ab.
+Die ausgegebene Zeile als `ZEIT_PASSWORD_HASH` in Coolify eintragen. Ohne `ZEIT_USERNAME` oder `ZEIT_PASSWORD_HASH` startet die App, lehnt aber jeden Login ab. Die Fehlermeldung ist immer „Benutzername oder Passwort falsch.“
 
 ## Weitere Einstellungen
 

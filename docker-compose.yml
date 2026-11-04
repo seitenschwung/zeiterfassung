@@ -21,6 +21,7 @@ services:
     # Password hash for the login (python -m app.hash_password, see README). No default on purpose:
     # Coolify then lists the variable. Without it the app starts but rejects every login.
     environment:
+      ZEIT_USERNAME: ${ZEIT_USERNAME}
       ZEIT_PASSWORD_HASH: ${ZEIT_PASSWORD_HASH}
     # SQLite lives here. The image creates /data owned by 10001, so a new named volume is writable by it.
     volumes:
