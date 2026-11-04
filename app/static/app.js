@@ -288,6 +288,9 @@ $('form-settings').addEventListener('submit', async (ev) => {
   }
 });
 
+// Downloads are buttons, not links, so crawlers (CI) do not try to navigate to the files.
+document.querySelectorAll('[data-download]').forEach((b) => b.addEventListener('click', () => { window.location.assign(b.dataset.download); }));
+
 // ---- week navigation, theme, loop --------------------------------------------------------------
 function shiftWeek(days) {
   const base = new Date(ov.week.from + 'T12:00:00Z');
