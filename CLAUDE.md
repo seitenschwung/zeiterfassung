@@ -31,7 +31,7 @@ slim image may lack system zoneinfo.
 - Entries over midnight are split per local day (DST days are 23/25 h). Overlap -> 409, end<=start -> 422,
   future start/end -> 422. Breaks = gaps (self-stamped), nothing is deducted.
 - Soll = weekly_hours / number of workdays, 0 on weekends and Schleswig-Holstein holidays (own code, no lib).
-- Urlaub/Krank (whole or half day, workdays only) credit that share of the day's Soll. Vacation quota per year.
+- Urlaub/Krank (whole or half day, workdays only) credit that share of the day's Soll. Vacation quota per year: `vacation_days` default, `vacation_overrides` {year: days} for deviating years (e.g. joined mid-year); remaining = quota of the current year - used.
 - Balance = start balance + sum of diffs from `start_date` (default: first entry) through today; future days
   show Soll but do not count.
 - Settings (weekly hours, workdays, vacation days, start date/balance) live in the `settings` table.

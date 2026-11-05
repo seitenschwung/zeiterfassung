@@ -209,3 +209,16 @@ def test_errors_use_the_envelope(client):
     r = client.get("/api/v1/entries?limit=0")
     assert r.status_code == 422 and r.json()["error"]["code"] == "validation_error"
     assert client.get("/api/v1/nope").json()["error"]["code"] == "http_error"
+
+
+def test_vacation_quota_per_year_keeps_existing_data(client, clock):
+    clock.set("2026-11-04T09:00")
+    data(add(client, "2026-11-03T08:00", "2026-11-03T16:00"))
+    client.put("/api/v1/absences/2026-11-02", json={"kind": "urlaub", "fraction": 1})
+    s = data(client.put("/api/v1/settings", json=dict(_settings(), vacation_overrides={"2026": 5})))
+    assert s["vacation_overrides"] == {"2026": 5} and s["vacation_days"] == 30
+    v = data(client.get("/api/v1/overview"))["vacation"]
+    assert (v["total"], v["used"], v["remaining"]) == (5, 1, 4)
+    assert data(client.get("/api/v1/entries?limit=5"))  # entries untouched
+    bad = client.put("/api/v1/settings", json=dict(_settings(), vacation_overrides={"x": 5}))
+    assert bad.status_code == 422

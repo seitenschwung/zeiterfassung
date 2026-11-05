@@ -97,7 +97,9 @@
       <legend>Arbeitstage</legend>
       <div class="days-pick" id="c-days"></div>
     </fieldset>
-    <label>Urlaubstage pro Jahr <input type="number" id="c-vac" min="0" max="366" step="0.5" required></label>
+    <label>Urlaubstage pro Jahr (Standard) <input type="number" id="c-vac" min="0" max="366" step="0.5" required></label>
+    <label><span id="c-vac-year-label">Urlaubstage dieses Jahr</span> <input type="number" id="c-vac-year" min="0" max="366" step="0.5"></label>
+    <p class="hint">Nur ausfüllen, wenn dieses Jahr abweicht (z. B. Eintritt mitten im Jahr). Leer = Standard. Eingetragener Urlaub bleibt unverändert.</p>
     <label>Saldo zählt ab <input type="date" id="c-start"></label>
     <p class="hint">Leer lassen: ab dem ersten Eintrag.</p>
     <label>Startsaldo Überstunden (Stunden) <input type="number" id="c-balance" step="0.25" required></label>

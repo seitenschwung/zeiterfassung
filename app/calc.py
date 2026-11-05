@@ -1,6 +1,6 @@
 """Pure time-tracking maths: holidays, day splitting (DST-safe), soll/ist/diff per day."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from app.config import TZ
@@ -11,6 +11,7 @@ class Settings:
     weekly_hours: float = 40.0
     workdays: tuple[int, ...] = (1, 2, 3, 4, 5)  # ISO weekdays, Monday = 1
     vacation_days: float = 30.0
+    vacation_overrides: dict[int, float] = field(default_factory=dict)  # year -> days
     start_date: date | None = None
     start_balance_hours: float = 0.0
 
@@ -18,6 +19,10 @@ class Settings:
     def daily_soll(self) -> int:
         """Target seconds on a regular working day."""
         return round(self.weekly_hours * 3600 / len(self.workdays))
+
+    def vacation_for(self, year: int) -> float:
+        """Vacation quota of a year: its own value if set, otherwise the default per year."""
+        return self.vacation_overrides.get(year, self.vacation_days)
 
     @property
     def start_balance(self) -> int:

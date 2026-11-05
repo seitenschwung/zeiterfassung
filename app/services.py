@@ -59,6 +59,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         weekly_hours=raw["weekly_hours"],
         workdays=tuple(raw["workdays"]),
         vacation_days=raw["vacation_days"],
+        vacation_overrides={int(k): v for k, v in raw.get("vacation_overrides", {}).items()},
         start_date=date.fromisoformat(raw["start_date"]) if raw.get("start_date") else None,
         start_balance_hours=raw["start_balance_hours"],
     )
@@ -69,6 +70,7 @@ def settings_out(s: Settings) -> dict:
         "weekly_hours": s.weekly_hours,
         "workdays": list(s.workdays),
         "vacation_days": s.vacation_days,
+        "vacation_overrides": {str(k): v for k, v in sorted(s.vacation_overrides.items())},
         "start_date": s.start_date.isoformat() if s.start_date else None,
         "start_balance_hours": s.start_balance_hours,
         "daily_soll": s.daily_soll,
@@ -311,9 +313,9 @@ def overview(conn: sqlite3.Connection, ref: date | None) -> dict:
         },
         "vacation": {
             "year": today_.year,
-            "total": settings.vacation_days,
+            "total": settings.vacation_for(today_.year),
             "used": used,
-            "remaining": settings.vacation_days - used,
+            "remaining": settings.vacation_for(today_.year) - used,
         },
         "settings": settings_out(settings),
     }
