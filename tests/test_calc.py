@@ -139,3 +139,8 @@ def test_holiday_has_no_soll():
     )
     assert [d["soll"] for d in days] == [8 * H, 0, 0]
     assert days[1]["holiday"] == "1. Weihnachtstag"
+
+
+def test_vacation_quota_falls_back_to_default_for_other_years():
+    s = Settings(vacation_days=30, vacation_overrides={2026: 5})
+    assert s.vacation_for(2026) == 5 and s.vacation_for(2027) == 30

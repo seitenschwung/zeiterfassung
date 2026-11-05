@@ -261,6 +261,9 @@ $('btn-settings').addEventListener('click', () => {
   const s = ov.settings;
   $('c-hours').value = s.weekly_hours;
   $('c-vac').value = s.vacation_days;
+  const yr = String(ov.vacation.year);
+  $('c-vac-year-label').textContent = 'Urlaubstage ' + yr + ' (abweichend)';
+  $('c-vac-year').value = s.vacation_overrides[yr] ?? '';
   $('c-start').value = s.start_date || '';
   $('c-balance').value = s.start_balance_hours;
   const box = $('c-days');
@@ -274,11 +277,16 @@ $('btn-settings').addEventListener('click', () => {
 $('form-settings').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const workdays = [...$('c-days').querySelectorAll('input:checked')].map((i) => Number(i.value));
+  const overrides = { ...ov.settings.vacation_overrides };
+  const yearDays = $('c-vac-year').value;
+  if (yearDays === '') delete overrides[String(ov.vacation.year)];
+  else overrides[String(ov.vacation.year)] = parseFloat(yearDays);
   try {
     await api('PUT', '/settings', {
       weekly_hours: parseFloat($('c-hours').value),
       workdays,
       vacation_days: parseFloat($('c-vac').value),
+      vacation_overrides: overrides,
       start_date: $('c-start').value || null,
       start_balance_hours: parseFloat($('c-balance').value),
     });

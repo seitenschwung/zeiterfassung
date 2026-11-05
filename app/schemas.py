@@ -36,8 +36,17 @@ class SettingsIn(BaseModel):
     weekly_hours: float = Field(gt=0, le=80)
     workdays: list[int] = Field(min_length=1)
     vacation_days: float = Field(ge=0, le=366)
+    vacation_overrides: dict[str, float] = {}
     start_date: date | None = None
     start_balance_hours: float = Field(ge=-2000, le=2000)
+
+    @field_validator("vacation_overrides")
+    @classmethod
+    def _overrides(cls, v: dict[str, float]) -> dict[str, float]:
+        for year, days in v.items():
+            if not (year.isdigit() and len(year) == 4) or not 0 <= days <= 366:
+                raise ValueError("Urlaubstage je Jahr: Jahr (4 Ziffern) und 0 bis 366 Tage")
+        return v
 
     @field_validator("workdays")
     @classmethod
