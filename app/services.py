@@ -150,10 +150,11 @@ def list_entries(
 
 
 def create_entry(conn: sqlite3.Connection, start: str, end: str | None) -> dict:
-    if end is None:
-        raise AppError(422, "end_missing", "Für einen manuellen Eintrag ist ein Ende nötig.")
-    s, e, now = parse_ts(start), parse_ts(end), now_ts()
+    """end=None adds an open entry: the timer keeps running from `start`."""
+    s, e, now = parse_ts(start), parse_ts(end) if end is not None else None, now_ts()
     with write_tx(conn):
+        if e is None and conn.execute("SELECT 1 FROM entries WHERE end_ts IS NULL").fetchone():
+            raise AppError(409, "already_running", "Es läuft bereits eine Zeiterfassung.")
         _check(conn, s, e, now, None)
         cur = conn.execute("INSERT INTO entries (start_ts, end_ts) VALUES (?, ?)", (s, e))
     return entry_out(_get(conn, cur.lastrowid), now)

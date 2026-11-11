@@ -222,3 +222,28 @@ def test_vacation_quota_per_year_keeps_existing_data(client, clock):
     assert data(client.get("/api/v1/entries?limit=5"))  # entries untouched
     bad = client.put("/api/v1/settings", json=dict(_settings(), vacation_overrides={"x": 5}))
     assert bad.status_code == 422
+
+
+def test_manual_entry_without_end_starts_running_timer(client, clock):
+    clock.set("2026-11-04T09:00")
+    e = data(client.post("/api/v1/entries", json={"start": "2026-11-04T07:30"}))
+    assert e["running"] is True and e["end"] is None and e["duration"] == 90 * 60
+    clock.set("2026-11-04T10:00")
+    assert data(client.get("/api/v1/overview"))["running"]["duration"] == 150 * 60
+    stopped = data(client.post("/api/v1/clock/stop"))
+    assert stopped["running"] is False and stopped["duration"] == 150 * 60
+
+
+def test_manual_entry_without_end_rules(client, clock):
+    clock.set("2026-11-04T09:00")
+    client.post("/api/v1/clock/start")
+    r = client.post("/api/v1/entries", json={"start": "2026-11-04T08:00"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "already_running"
+    clock.set("2026-11-04T09:10")
+    client.post("/api/v1/clock/stop")
+    data(add(client, "2026-11-04T08:30", "2026-11-04T08:45"))
+    assert client.post("/api/v1/entries", json={"start": "2026-11-04T08:00"}).status_code == 409  # overlap
+    assert (
+        client.post("/api/v1/entries", json={"start": "2026-11-04T10:00"}).json()["error"]["code"]
+        == "in_future"
+    )
