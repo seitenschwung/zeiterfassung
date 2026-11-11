@@ -201,8 +201,11 @@ function openEntry(entry, day) {
   $('e-start').value = entry ? entry.start_local : day + 'T08:00';
   $('e-end').value = entry ? entry.end_local || '' : day + 'T12:00';
   $('e-end').disabled = !!(entry && entry.running);
-  $('e-end').required = !(entry && entry.running);
-  $('e-hint').hidden = !(entry && entry.running);
+  $('e-end').required = !!entry && !entry.running;
+  $('e-hint').textContent = entry && entry.running
+    ? 'Die Erfassung läuft noch. Das Ende bleibt leer.'
+    : 'Ende leer lassen: Die Erfassung läuft ab dem Start weiter.';
+  $('e-hint').hidden = !!entry && !entry.running;
   $('dlg-entry').showModal();
 }
 

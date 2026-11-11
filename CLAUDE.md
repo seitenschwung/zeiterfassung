@@ -25,7 +25,7 @@ slim image may lack system zoneinfo.
 - `tests/`: `conftest.py` gives `client` (temp DB) and `clock` (fake now, Berlin time).
 
 ## Rules / decisions
-- Times are stored as epoch seconds (UTC); `end_ts IS NULL` = running (one at most, unique index).
+- Times are stored as epoch seconds (UTC); `end_ts IS NULL` = running (one at most, unique index); a manual entry without end (`POST /entries`, end empty) starts a running entry at the past start.
   Input without offset = Europe/Berlin; spring-gap times rejected, ambiguous autumn hour = first occurrence,
   explicit offset (`+01:00`) picks the second. UI sends the original offset for unchanged fields.
 - Entries over midnight are split per local day (DST days are 23/25 h). Overlap -> 409, end<=start -> 422,
