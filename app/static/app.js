@@ -142,6 +142,9 @@ function renderDays() {
       }
       card.append(ul);
     }
+    if (d.auto_break) {
+      card.append(el('p', { class: 'auto-break', text: 'Gesetzliche Pause: ' + Math.round(d.auto_break / 60) + ' min abgezogen (nicht gestempelt)' }));
+    }
     if (!isFuture || d.workday) {
       const actions = el('div', { class: 'day-actions' });
       if (!isFuture) actions.append(el('button', { type: 'button', class: 'small', onclick: () => openEntry(null, d.date), text: '+ Eintrag' }));

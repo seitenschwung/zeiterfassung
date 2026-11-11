@@ -101,8 +101,9 @@ def test_overtime_and_undertime_per_day():
     days = build(
         [(ts("2026-11-02T08:00"), ts("2026-11-02T17:30")), (ts("2026-11-03T09:00"), ts("2026-11-03T15:00"))]
     )
-    assert days[0]["worked"] == 9.5 * H and days[0]["diff"] == 1.5 * H
-    assert days[1]["diff"] == -2 * H
+    assert days[0]["worked"] == 9.5 * H and days[0]["auto_break"] == 45 * 60
+    assert days[0]["diff"] == 45 * 60  # 9.5 h - 45 min legal break - 8 h
+    assert days[1]["auto_break"] == 0 and days[1]["diff"] == -2 * H  # exactly 6 h: no break
     assert days[2]["diff"] == -8 * H  # Wednesday without entry, in the past
     assert days[5]["soll"] == 0 and days[5]["diff"] == 0  # Saturday
 
@@ -144,3 +145,30 @@ def test_holiday_has_no_soll():
 def test_vacation_quota_falls_back_to_default_for_other_years():
     s = Settings(vacation_days=30, vacation_overrides={2026: 5})
     assert s.vacation_for(2026) == 5 and s.vacation_for(2027) == 30
+
+
+def test_legal_break_only_tops_up_what_is_missing_in_gaps():
+    day = date(2026, 11, 2)
+
+    def one(entries):
+        return build(entries)[0]
+
+    # exactly 6 h: no break required
+    assert one([(ts("2026-11-02T08:00"), ts("2026-11-02T14:00"))])["auto_break"] == 0
+    # just over 6 h without gap: 30 min
+    assert one([(ts("2026-11-02T08:00"), ts("2026-11-02T14:01"))])["auto_break"] == 30 * 60
+    # over 9 h worked: 45 min
+    assert one([(ts("2026-11-02T07:00"), ts("2026-11-02T16:30"))])["auto_break"] == 45 * 60
+    # self-stamped 30 min gap covers the 30 min, nothing deducted
+    d = one(
+        [(ts("2026-11-02T08:00"), ts("2026-11-02T12:00")), (ts("2026-11-02T12:30"), ts("2026-11-02T16:30"))]
+    )
+    assert d["auto_break"] == 0 and d["ist"] == 8 * H and d["diff"] == 0
+    # 10 min gap: only 20 min are topped up
+    d = one(
+        [(ts("2026-11-02T08:00"), ts("2026-11-02T12:00")), (ts("2026-11-02T12:10"), ts("2026-11-02T16:30"))]
+    )
+    assert d["auto_break"] == 20 * 60 and d["date"] == day
+    # absence credit is not touched
+    d = build([], absences={day: ("urlaub", 1.0)})[0]
+    assert d["auto_break"] == 0 and d["ist"] == 8 * H
