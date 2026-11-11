@@ -97,6 +97,13 @@ def seconds_per_day(start_ts: int, end_ts: int) -> dict[date, int]:
     return out
 
 
+def legal_break(worked: int) -> int:
+    """Minimum break by § 4 ArbZG: over 6 h -> 30 min, over 9 h -> 45 min."""
+    if worked > 9 * 3600:
+        return 45 * 60
+    return 30 * 60 if worked > 6 * 3600 else 0
+
+
 def day_soll(d: date, settings: Settings) -> int:
     return settings.daily_soll if is_working_day(d, settings) else 0
 
@@ -113,9 +120,18 @@ def build_days(
 ) -> list[dict]:
     """Per-day figures for first..last. Days outside count_from..today have diff 0 (not counted)."""
     worked: dict[date, int] = {}
+    spans: dict[date, list[tuple[int, int]]] = {}
     for start, end in entries:
-        for d, sec in seconds_per_day(start, end if end is not None else max(now_ts, start)).items():
+        end = end if end is not None else max(now_ts, start)
+        for d, sec in seconds_per_day(start, end).items():
             worked[d] = worked.get(d, 0) + sec
+            lo, hi = day_bounds(d)
+            spans.setdefault(d, []).append((max(start, lo), min(end, hi)))
+
+    def stamped_gap(d: date) -> int:
+        s = sorted(spans.get(d, []))
+        return sum(max(0, nxt[0] - cur[1]) for cur, nxt in zip(s, s[1:], strict=False))
+
     days = []
     d = first
     while d <= last:
@@ -123,7 +139,8 @@ def build_days(
         absence = absences.get(d)
         credit = round(soll * absence[1]) if absence else 0
         w = worked.get(d, 0)
-        ist = w + credit
+        auto_break = max(0, legal_break(w) - stamped_gap(d))
+        ist = w - auto_break + credit
         counted = count_from <= d <= today
         days.append(
             {
@@ -135,6 +152,7 @@ def build_days(
                 "soll": soll,
                 "worked": w,
                 "credit": credit,
+                "auto_break": auto_break,
                 "ist": ist,
                 "diff": ist - soll if counted else 0,
                 "counted": counted,

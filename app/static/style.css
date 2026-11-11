@@ -92,6 +92,7 @@ button.danger { color: var(--neg); }
 .entry .times { flex: 1; min-width: 150px; font-variant-numeric: tabular-nums; }
 .entry .dur { color: var(--muted); font-variant-numeric: tabular-nums; }
 .entry .live { color: var(--accent); font-weight: 600; }
+.auto-break { margin: 8px 0 0; font-size: .85rem; color: var(--muted, #6b7280); padding: 4px 8px; border-left: 3px solid var(--neg); background: var(--chip); border-radius: 4px; }
 .day-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 
 dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--text); padding: 18px; width: min(92vw, 440px); }

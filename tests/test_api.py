@@ -131,15 +131,15 @@ def test_entry_over_midnight_in_overview(client):
 def test_week_and_total_balance(client, clock):
     clock.set("2026-11-06T18:00")  # Friday
     client.put("/api/v1/settings", json=dict(_settings(), start_date="2026-11-02", start_balance_hours=5))
-    data(add(client, "2026-11-02T08:00", "2026-11-02T17:30"))  # +1.5
+    data(add(client, "2026-11-02T08:00", "2026-11-02T17:30"))  # +0.75 (9.5 h - 45 min legal break - 8 h)
     data(add(client, "2026-11-03T09:00", "2026-11-03T15:00"))  # -2
     client.put("/api/v1/absences/2026-11-04", json={"kind": "urlaub", "fraction": 1})  # 0
     client.put("/api/v1/absences/2026-11-05", json={"kind": "krank", "fraction": 0.5})  # -4
     o = data(client.get("/api/v1/overview"))
     # Friday has no entries yet and counts as -8
-    assert o["week"]["diff"] == int((1.5 - 2 - 4 - 8) * 3600)
-    assert o["balance"]["total"] == int((5 + 1.5 - 2 - 4 - 8) * 3600)
-    assert o["balance"]["before_today"] == int((5 + 1.5 - 2 - 4) * 3600)
+    assert o["week"]["diff"] == int((0.75 - 2 - 4 - 8) * 3600)
+    assert o["balance"]["total"] == int((5 + 0.75 - 2 - 4 - 8) * 3600)
+    assert o["balance"]["before_today"] == int((5 + 0.75 - 2 - 4) * 3600)
     assert o["vacation"]["used"] == 1 and o["vacation"]["remaining"] == 29
     assert o["week"]["week"] == 45
 

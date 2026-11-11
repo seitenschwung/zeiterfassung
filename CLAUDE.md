@@ -29,7 +29,7 @@ slim image may lack system zoneinfo.
   Input without offset = Europe/Berlin; spring-gap times rejected, ambiguous autumn hour = first occurrence,
   explicit offset (`+01:00`) picks the second. UI sends the original offset for unchanged fields.
 - Entries over midnight are split per local day (DST days are 23/25 h). Overlap -> 409, end<=start -> 422,
-  future start/end -> 422. Breaks = gaps (self-stamped), nothing is deducted.
+  future start/end -> 422. Breaks = gaps (self-stamped). Legal break (§ 4 ArbZG: >6 h 30 min, >9 h 45 min of stamped work per day) is deducted from Ist only as far as the gaps do not cover it (`auto_break`, shown on the day card).
 - Soll = weekly_hours / number of workdays, 0 on weekends and Schleswig-Holstein holidays (own code, no lib).
 - Urlaub/Krank (whole or half day, workdays only) credit that share of the day's Soll. Vacation quota per year: `vacation_days` default, `vacation_overrides` {year: days} for deviating years (e.g. joined mid-year); remaining = quota of the current year - used.
 - Balance = start balance + sum of diffs from `start_date` (default: first entry) through today; future days
